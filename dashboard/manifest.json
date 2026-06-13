@@ -1,0 +1,13 @@
+{
+  "name": "hermes-cost-lens",
+  "label": "Cost Lens",
+  "description": "Analyze Hermes Agent session token usage and estimated cost from uploaded session JSON files.",
+  "icon": "BarChart3",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/cost-lens",
+    "position": "after:analytics"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css"
+}

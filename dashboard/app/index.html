@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hermes Cost Lens</title>
+<link rel="stylesheet" href="styles.css" />
+<script src="d3.v7.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">▦</span>
+    <div>
+      <h1>Hermes Cost Lens</h1>
+      <p class="subtitle">Visualize where your agent sessions burn tokens &amp; money</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <label class="btn primary" for="file-input">Load session JSON</label>
+    <input type="file" id="file-input" accept=".json,application/json" multiple hidden />
+  </div>
+</header>
+
+<div id="dropzone" class="dropzone">
+  <div class="dropzone-inner">
+    <div class="dropzone-icon">⤓</div>
+    <h2>Drop session JSON files here</h2>
+    <p>or use the <strong>Load session JSON</strong> button above. You can load several sessions and switch between them.</p>
+  </div>
+</div>
+
+<main id="app" hidden>
+  <nav id="session-tabs" class="session-tabs"></nav>
+
+  <section class="summary-grid" id="summary-cards"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Pricing <span class="muted" id="pricing-model"></span></h2>
+      <span class="pill" id="pricing-status">loading…</span>
+    </div>
+    <div class="pricing-grid">
+      <label>Input <span class="unit">$ / M tokens</span>
+        <input type="number" id="price-input" step="0.01" min="0" />
+      </label>
+      <label>Output <span class="unit">$ / M tokens</span>
+        <input type="number" id="price-output" step="0.01" min="0" />
+      </label>
+      <label>Cache read <span class="unit">$ / M tokens</span>
+        <input type="number" id="price-cache-read" step="0.01" min="0" />
+      </label>
+      <label>Cache write <span class="unit">$ / M tokens</span>
+        <input type="number" id="price-cache-write" step="0.01" min="0" />
+      </label>
+    </div>
+    <p class="hint">Prices are fetched live from the OpenRouter models API and matched on the session's <code>model</code> id. Edit to run what-if scenarios — all charts update instantly.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Cost flamegraph <span class="muted">— one column per API call, width ∝ cost</span></h2>
+      <div class="legend">
+        <span><i class="sw cached"></i>cached input</span>
+        <span><i class="sw fresh"></i>fresh input</span>
+        <span><i class="sw output"></i>output</span>
+      </div>
+    </div>
+    <p class="hint">Every API call re-sends the whole conversation. Row 1 = API calls, row 2 = cached / fresh / output split, row 3 = the individual messages inside each pool. Click any block for details.</p>
+    <div id="flamegraph" class="chart"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Cumulative cost attribution <span class="muted">— which message costs you the most over the whole session</span></h2>
+    </div>
+    <p class="hint">Each message's area = its total cost across <em>all</em> API calls it was re-sent in (context cost) plus its generation cost. Big tiles are your optimization targets: trim them, summarize them, or drop them from context.</p>
+    <div id="treemap" class="chart"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Message breakdown</h2>
+    </div>
+    <div class="table-wrap">
+      <table id="msg-table">
+        <thead>
+          <tr>
+            <th data-k="idx">#</th>
+            <th data-k="label">Message</th>
+            <th data-k="tokens" class="num">Tokens</th>
+            <th data-k="sentCount" class="num">Times re-sent</th>
+            <th data-k="contextCost" class="num">Context cost</th>
+            <th data-k="outputCost" class="num">Output cost</th>
+            <th data-k="totalCost" class="num">Total</th>
+            <th data-k="pct" class="num">% of session</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="insights-panel">
+    <div class="panel-head"><h2>Optimization hints</h2></div>
+    <ul id="insights"></ul>
+  </section>
+</main>
+
+<aside id="detail" class="detail" hidden>
+  <div class="detail-head">
+    <h3 id="detail-title"></h3>
+    <button id="detail-close" class="btn ghost">✕</button>
+  </div>
+  <div id="detail-body"></div>
+</aside>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

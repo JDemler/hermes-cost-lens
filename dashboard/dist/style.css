@@ -1,0 +1,12 @@
+.hca-shell {
+  width: 100%;
+  min-height: calc(100vh - 8rem);
+}
+
+.hca-frame {
+  width: 100%;
+  min-height: calc(100vh - 8rem);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--color-background);
+}
