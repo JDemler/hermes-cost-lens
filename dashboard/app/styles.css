@@ -63,6 +63,18 @@ h1 { margin: 0; font-size: 19px; font-weight: 650; }
 .btn.ghost { background: transparent; border: none; font-size: 16px; color: var(--muted); }
 .btn.ghost:hover { color: var(--fg); }
 
+.autoload-status {
+  margin: 14px 28px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg2);
+  color: var(--muted);
+  padding: 9px 12px;
+  font-size: 12.5px;
+}
+.autoload-status.ok { color: var(--green); border-color: rgba(63,185,80,.4); }
+.autoload-status.err { color: #f85149; border-color: rgba(248,81,73,.4); }
+
 /* dropzone */
 .dropzone {
   margin: 40px auto;

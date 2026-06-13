@@ -1,12 +1,174 @@
-.hca-shell {
-  width: 100%;
+.hcl-page {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 0.875rem;
   min-height: calc(100vh - 8rem);
 }
 
-.hca-frame {
+.hcl-sidebar,
+.hcl-slot {
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+}
+
+.hcl-sidebar {
+  max-height: calc(100vh - 8rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.hcl-sidebar-head {
+  padding: 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hcl-sidebar-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.hcl-sidebar-head p {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.hcl-session-list {
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.hcl-session {
+  width: 100%;
+  display: block;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  padding: 0.625rem;
+  cursor: pointer;
+}
+
+.hcl-session:hover,
+.hcl-session.is-active {
+  border-color: var(--color-border);
+  background: var(--color-accent);
+}
+
+.hcl-session-title,
+.hcl-session-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hcl-session-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.hcl-session-meta {
+  margin-top: 0.125rem;
+  color: var(--color-muted-foreground);
+  font-size: 0.75rem;
+}
+
+.hcl-main {
+  min-width: 0;
+}
+
+.hcl-frame {
   width: 100%;
   min-height: calc(100vh - 8rem);
   border: 1px solid var(--color-border);
   border-radius: calc(var(--radius) + 2px);
   background: var(--color-background);
+}
+
+.hcl-loading,
+.hcl-empty,
+.hcl-error {
+  margin: 0.75rem;
+  color: var(--color-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.hcl-error {
+  color: var(--color-destructive);
+}
+
+.hcl-slot {
+  padding: 0.75rem;
+}
+
+.hcl-slot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.625rem;
+}
+
+.hcl-slot-head strong {
+  font-size: 0.875rem;
+}
+
+.hcl-slot-head span {
+  color: var(--color-muted-foreground);
+  font-size: 0.75rem;
+}
+
+.hcl-slot-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+}
+
+.hcl-slot-link {
+  display: block;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.625rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.hcl-slot-link:hover {
+  background: var(--color-accent);
+}
+
+.hcl-slot-link span,
+.hcl-slot-link small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hcl-slot-link span {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.hcl-slot-link small {
+  margin-top: 0.125rem;
+  color: var(--color-muted-foreground);
+  font-size: 0.71875rem;
+}
+
+@media (max-width: 900px) {
+  .hcl-page {
+    grid-template-columns: 1fr;
+  }
+
+  .hcl-sidebar {
+    max-height: 18rem;
+  }
 }

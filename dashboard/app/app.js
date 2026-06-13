@@ -286,23 +286,47 @@ function bindPricingInputs() {
 }
 
 // ---------------------------------------------------------------------------
-// File loading
+// Session loading
 // ---------------------------------------------------------------------------
+
+function normalizeHermesSession(raw, fallbackName) {
+  const meta = raw.session || raw.metadata || raw;
+  const messages = raw.messages || raw.history || raw.conversation || [];
+  if (!Array.isArray(messages)) throw new Error("no messages[] array");
+
+  return {
+    ...meta,
+    ...raw,
+    messages,
+    title: raw.title || meta.title || fallbackName,
+    model: raw.model || meta.model || "unknown",
+    input_tokens: raw.input_tokens ?? raw.prompt_tokens ?? meta.input_tokens ?? meta.prompt_tokens,
+    output_tokens: raw.output_tokens ?? raw.completion_tokens ?? meta.output_tokens ?? meta.completion_tokens,
+    cache_read_tokens: raw.cache_read_tokens ?? meta.cache_read_tokens ?? 0,
+    cache_write_tokens: raw.cache_write_tokens ?? meta.cache_write_tokens ?? 0,
+    estimated_cost_usd: raw.estimated_cost_usd ?? raw.cost_usd ?? meta.estimated_cost_usd ?? meta.cost_usd,
+  };
+}
+
+function addSession(name, raw) {
+  const normalized = normalizeHermesSession(raw, name);
+  const session = { name, raw: normalized, analysis: analyzeSession(normalized) };
+  state.sessions.push(session);
+  state.activeIdx = state.sessions.length - 1;
+  $("#app").hidden = false;
+  $("#clear-sessions").hidden = false;
+  $("#dropzone").classList.add("compact");
+  $("#dropzone").querySelector("p").innerHTML = "Drop session JSON files here to compare against this session.";
+  renderTabs();
+  refreshPricesForActive(false);
+}
 
 function loadFiles(fileList) {
   for (const file of fileList) {
     file.text().then((text) => {
       try {
         const raw = JSON.parse(text);
-        if (!Array.isArray(raw.messages)) throw new Error("no messages[] array");
-        const session = { name: file.name, raw, analysis: analyzeSession(raw) };
-        state.sessions.push(session);
-        state.activeIdx = state.sessions.length - 1;
-        $("#app").hidden = false;
-        $("#dropzone").classList.add("compact");
-        $("#dropzone").querySelector("p").innerHTML = "Drop more session JSON files here to compare sessions.";
-        renderTabs();
-        refreshPricesForActive(false);
+        addSession(file.name, raw);
       } catch (e) {
         alert(`Could not parse ${file.name}: ${e.message}`);
       }
@@ -310,8 +334,69 @@ function loadFiles(fileList) {
   }
 }
 
+function hermesFetchJSON(path) {
+  const parentSDK = window.parent?.__HERMES_PLUGIN_SDK__;
+  if (parentSDK?.fetchJSON) return parentSDK.fetchJSON(path);
+  return fetch(path, { credentials: "same-origin" }).then((res) => {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  });
+}
+
+function setAutoloadStatus(message, kind = "") {
+  const el = $("#autoload-status");
+  if (!message) {
+    el.hidden = true;
+    el.textContent = "";
+    el.className = "autoload-status";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = message;
+  el.className = `autoload-status ${kind}`.trim();
+}
+
+async function fetchHermesSession(sessionId) {
+  try {
+    return await hermesFetchJSON(`/api/sessions/${encodeURIComponent(sessionId)}/export`);
+  } catch (exportErr) {
+    const [meta, messagesResp] = await Promise.all([
+      hermesFetchJSON(`/api/sessions/${encodeURIComponent(sessionId)}`),
+      hermesFetchJSON(`/api/sessions/${encodeURIComponent(sessionId)}/messages`),
+    ]);
+    const messages = messagesResp.messages || messagesResp.items || messagesResp;
+    if (!Array.isArray(messages)) throw exportErr;
+    return { ...meta, messages };
+  }
+}
+
+async function loadSessionFromQuery() {
+  const sessionId = new URLSearchParams(window.location.search).get("session");
+  if (!sessionId) return;
+
+  setAutoloadStatus(`Loading Hermes session ${sessionId}...`);
+  try {
+    const raw = await fetchHermesSession(sessionId);
+    addSession(raw.title || sessionId, raw);
+    setAutoloadStatus(`Loaded Hermes session ${raw.title || sessionId}.`, "ok");
+  } catch (e) {
+    console.error("Hermes session load failed:", e);
+    setAutoloadStatus(`Could not load Hermes session ${sessionId}: ${e.message}`, "err");
+  }
+}
+
 function bindFileInputs() {
   $("#file-input").addEventListener("change", (e) => { loadFiles(e.target.files); e.target.value = ""; });
+  $("#clear-sessions").addEventListener("click", () => {
+    state.sessions = [];
+    state.activeIdx = -1;
+    $("#app").hidden = true;
+    $("#clear-sessions").hidden = true;
+    $("#detail").hidden = true;
+    $("#dropzone").classList.remove("compact");
+    $("#dropzone").querySelector("p").innerHTML = "Open a session from the Hermes dashboard, or use <strong>Load session JSON</strong> as a fallback.";
+    setAutoloadStatus("");
+  });
   const dz = $("#dropzone");
   for (const target of [dz, document.body]) {
     target.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
@@ -737,4 +822,5 @@ window.addEventListener("DOMContentLoaded", () => {
   let rT;
   window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(renderAll, 150); });
   fetchOpenRouterPricing();
+  loadSessionFromQuery();
 });

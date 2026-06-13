@@ -17,16 +17,19 @@
     </div>
   </div>
   <div class="header-actions">
+    <button class="btn ghost" id="clear-sessions" type="button" hidden>Clear</button>
     <label class="btn primary" for="file-input">Load session JSON</label>
     <input type="file" id="file-input" accept=".json,application/json" multiple hidden />
   </div>
 </header>
 
+<div id="autoload-status" class="autoload-status" hidden></div>
+
 <div id="dropzone" class="dropzone">
   <div class="dropzone-inner">
     <div class="dropzone-icon">⤓</div>
     <h2>Drop session JSON files here</h2>
-    <p>or use the <strong>Load session JSON</strong> button above. You can load several sessions and switch between them.</p>
+    <p>Open a session from the Hermes dashboard, or use <strong>Load session JSON</strong> as a fallback.</p>
   </div>
 </div>
 

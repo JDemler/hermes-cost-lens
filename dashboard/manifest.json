@@ -8,6 +8,7 @@
     "path": "/cost-lens",
     "position": "after:analytics"
   },
+  "slots": ["sessions:top"],
   "entry": "dist/index.js",
   "css": "dist/style.css"
 }

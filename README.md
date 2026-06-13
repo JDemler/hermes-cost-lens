@@ -1,10 +1,9 @@
 # Hermes Cost Lens
 
-A zero-build Hermes dashboard plugin and standalone single-page web tool for analyzing and
-optimizing the cost of Hermes Agent workflow sessions. Load one or more session JSON exports,
-and it prices the session with live model pricing from the
-[OpenRouter models API](https://openrouter.ai/api/v1/models) and visualizes exactly where the
-money goes.
+A zero-build Hermes dashboard plugin for analyzing and optimizing the cost of Hermes Agent
+workflow sessions. Open a session directly from the dashboard, and it prices the session with live
+model pricing from the [OpenRouter models API](https://openrouter.ai/api/v1/models) and visualizes
+exactly where the money goes.
 
 ## Hermes plugin
 
@@ -14,8 +13,8 @@ This repository is packaged as a dashboard-only Hermes plugin named `hermes-cost
 dashboard/
 ├── manifest.json       # Hermes dashboard plugin manifest
 ├── dist/
-│   ├── index.js        # tab registration bundle
-│   └── style.css       # iframe wrapper styles
+│   ├── index.js        # dashboard tab + Sessions-page quick links
+│   └── style.css       # dashboard wrapper styles
 └── app/
     ├── index.html      # analyzer UI
     ├── app.js
@@ -40,18 +39,23 @@ Then open `hermes dashboard`. The plugin appears as the **Cost Lens** tab. Dashb
 plugins are discovered from `dashboard/manifest.json`; they do not need `hermes plugins enable`
 because they do not load model-visible tools, hooks, or Python code.
 
+Cost Lens also injects a compact panel into the top of the dashboard **Sessions** page with direct
+analysis links for recent sessions. Those links open `/cost-lens?session=<id>` and the analyzer
+loads the session through Hermes' `/api/sessions/<id>/export` endpoint, so users do not need to
+download and re-upload JSON.
+
 ## Run it
 
-The standalone page is still useful for local development:
+For local UI development:
 
 ```bash
 python3 -m http.server 8742
-# open http://localhost:8742
+# open http://localhost:8742/dashboard/app/
 ```
 
-Any static file server works. There is no build step. The standalone root page uses D3 from a
-CDN; the Hermes plugin copy vendors D3 under `dashboard/app/` so the plugin bundle does not depend
-on jsDelivr at runtime. OpenRouter pricing is fetched live from its public API.
+Any static file server works. There is no build step. D3 is vendored under `dashboard/app/`, so the
+plugin bundle does not depend on jsDelivr at runtime. OpenRouter pricing is fetched live from its
+public API.
 
 ## What you get
 
