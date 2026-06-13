@@ -19,6 +19,7 @@ dashboard/
     ├── index.html      # analyzer UI
     ├── app.js
     ├── styles.css
+    ├── openrouter-prices.json # bundled fallback pricing for common models
     └── d3.v7.min.js    # vendored D3 runtime
 ```
 
@@ -55,15 +56,16 @@ python3 -m http.server 8742
 
 Any static file server works. There is no build step. D3 is vendored under `dashboard/app/`, so the
 plugin bundle does not depend on jsDelivr at runtime. OpenRouter pricing is fetched live from its
-public API.
+public API, with a bundled `openrouter-prices.json` fallback for 100 common OpenRouter models and
+providerless aliases such as `gpt-5.5`.
 
 ## What you get
 
 - **Summary cards** — total cost, API calls, and tokens split into **fresh input / cached input / output**,
   each with their dollar share.
-- **Pricing panel** — input / output / cache-read rates fetched live from OpenRouter,
-  matched on the session's `model` id. All fields are editable for what-if scenarios
-  (e.g. "what would this session cost on a different model?").
+- **Pricing panel** — input / output / cache-read rates fetched live from OpenRouter or the
+  bundled fallback table, matched on the session's `model` id. All fields are editable for what-if
+  scenarios (e.g. "what would this session cost on a different model?").
 - **Cost flamegraph** — one column per API call, width proportional to cost.
   - Row 1: the API call
   - Row 2: cached input vs fresh input vs output cost within that call

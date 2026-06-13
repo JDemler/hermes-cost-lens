@@ -12,6 +12,9 @@ const state = {
   activeIdx: -1,
   openrouter: null,    // model id -> pricing object
   openrouterStatus: "loading",
+  fallbackPricing: null,
+  fallbackStatus: "loading",
+  priceSource: {},      // model id -> { source, matchedId }
   prices: {},          // model id -> { in, out, cacheRead } in $/token
 };
 
@@ -243,6 +246,11 @@ function computeCosts(session, prices) {
 // ---------------------------------------------------------------------------
 
 async function fetchOpenRouterPricing() {
+  await Promise.all([fetchBundledPricing(), fetchLiveOpenRouterPricing()]);
+  if (state.activeIdx >= 0) refreshPricesForActive(true);
+}
+
+async function fetchLiveOpenRouterPricing() {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models");
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -253,14 +261,63 @@ async function fetchOpenRouterPricing() {
     console.warn("OpenRouter pricing fetch failed:", e);
     state.openrouterStatus = "error";
   }
-  if (state.activeIdx >= 0) refreshPricesForActive(true);
+}
+
+async function fetchBundledPricing() {
+  try {
+    const res = await fetch("openrouter-prices.json");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    state.fallbackPricing = {
+      models: new Map((data.models || []).map((m) => [m.id, m.pricing])),
+      aliases: data.aliases || {},
+      generatedAt: data.generated_at,
+    };
+    state.fallbackStatus = "ok";
+  } catch (e) {
+    console.warn("Bundled pricing load failed:", e);
+    state.fallbackStatus = "error";
+  }
+}
+
+function normalizeModelId(modelId) {
+  return String(modelId || "").trim().toLowerCase();
+}
+
+function findPricing(map, modelId, aliases = {}) {
+  if (!map || !modelId) return null;
+  const wanted = normalizeModelId(modelId);
+  const alias = aliases[wanted];
+  if (alias && map.has(alias)) return { id: alias, pricing: map.get(alias) };
+  if (map.has(wanted)) return { id: wanted, pricing: map.get(wanted) };
+
+  const suffixMatches = [...map.keys()].filter((id) => id.split("/").pop() === wanted);
+  if (suffixMatches.length === 1) return { id: suffixMatches[0], pricing: map.get(suffixMatches[0]) };
+
+  const bare = wanted.replace(/^.*\//, "");
+  const exactBare = [...map.keys()].find((id) => id.split("/").pop() === bare);
+  if (exactBare) return { id: exactBare, pricing: map.get(exactBare) };
+
+  return null;
+}
+
+function parsePricing(p) {
+  const f = (v) => (v != null ? parseFloat(v) : 0);
+  return { in: f(p.prompt), out: f(p.completion), cacheRead: f(p.input_cache_read) };
 }
 
 function defaultPricesFor(modelId) {
-  const p = state.openrouter?.get(modelId);
-  if (!p) return null;
-  const f = (v) => (v != null ? parseFloat(v) : 0);
-  return { in: f(p.prompt), out: f(p.completion), cacheRead: f(p.input_cache_read) };
+  const live = findPricing(state.openrouter, modelId);
+  if (live) return { prices: parsePricing(live.pricing), source: "live", matchedId: live.id };
+
+  const fallback = findPricing(
+    state.fallbackPricing?.models,
+    modelId,
+    state.fallbackPricing?.aliases,
+  );
+  if (fallback) return { prices: parsePricing(fallback.pricing), source: "bundled", matchedId: fallback.id };
+
+  return null;
 }
 
 function refreshPricesForActive(overwriteFromApi) {
@@ -269,8 +326,13 @@ function refreshPricesForActive(overwriteFromApi) {
   const model = s.raw.model || "unknown";
   if (!state.prices[model] || overwriteFromApi) {
     const def = defaultPricesFor(model);
-    if (def) state.prices[model] = def;
-    else if (!state.prices[model]) state.prices[model] = { in: 0, out: 0, cacheRead: 0 };
+    if (def) {
+      state.prices[model] = def.prices;
+      state.priceSource[model] = { source: def.source, matchedId: def.matchedId };
+    } else if (!state.prices[model]) {
+      state.prices[model] = { in: 0, out: 0, cacheRead: 0 };
+      state.priceSource[model] = { source: "manual", matchedId: null };
+    }
   }
   renderPricingInputs();
   renderAll();
@@ -295,9 +357,22 @@ function renderPricingInputs() {
 
   const pill = $("#pricing-status");
   if (state.openrouterStatus === "loading") { pill.textContent = "fetching OpenRouter prices…"; pill.className = "pill"; }
-  else if (state.openrouterStatus === "error") { pill.textContent = "OpenRouter fetch failed — enter prices manually"; pill.className = "pill err"; }
-  else if (state.openrouter.has(model)) { pill.textContent = "live from OpenRouter"; pill.className = "pill ok"; }
-  else { pill.textContent = "model not on OpenRouter — enter prices manually"; pill.className = "pill err"; }
+  else {
+    const src = state.priceSource[model];
+    if (src?.source === "live") {
+      pill.textContent = src.matchedId === model ? "live from OpenRouter" : `live from OpenRouter (${src.matchedId})`;
+      pill.className = "pill ok";
+    } else if (src?.source === "bundled") {
+      pill.textContent = `bundled fallback (${src.matchedId})`;
+      pill.className = "pill ok";
+    } else if (state.openrouterStatus === "error" && state.fallbackStatus === "error") {
+      pill.textContent = "pricing unavailable — enter prices manually";
+      pill.className = "pill err";
+    } else {
+      pill.textContent = "model not in pricing tables — enter prices manually";
+      pill.className = "pill err";
+    }
+  }
 }
 
 function bindPricingInputs() {
@@ -308,6 +383,7 @@ function bindPricingInputs() {
       if (!s) return;
       const model = s.raw.model || "unknown";
       state.prices[model] = { ...activePrices(), [key]: (parseFloat(e.target.value) || 0) / 1e6 };
+      state.priceSource[model] = { source: "manual", matchedId: null };
       renderAll();
     });
   }
