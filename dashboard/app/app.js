@@ -12,12 +12,47 @@ const state = {
   activeIdx: -1,
   openrouter: null,    // model id -> pricing object
   openrouterStatus: "loading",
-  prices: {},          // model id -> { in, out, cacheRead, cacheWrite } in $/token
+  prices: {},          // model id -> { in, out, cacheRead } in $/token
 };
 
 const COLORS = { cached: "#38bdf8", fresh: "#fbbf24", output: "#f472b6" };
 
 const $ = (sel) => document.querySelector(sel);
+
+function syncHermesTheme() {
+  let source;
+  try {
+    source = window.parent && window.parent !== window
+      ? window.parent.getComputedStyle(window.parent.document.documentElement)
+      : null;
+  } catch {
+    source = null;
+  }
+  if (!source) return;
+
+  const root = document.documentElement;
+  const map = {
+    "--bg": ["--color-background"],
+    "--bg2": ["--color-card", "--color-popover"],
+    "--bg3": ["--color-muted", "--color-accent"],
+    "--border": ["--color-border"],
+    "--fg": ["--color-foreground", "--color-card-foreground"],
+    "--muted": ["--color-muted-foreground"],
+    "--accent": ["--color-primary", "--color-ring"],
+    "--accent-fg": ["--color-primary-foreground"],
+    "--green": ["--color-chart-2", "--color-primary"],
+    "--radius": ["--radius"],
+  };
+
+  for (const [target, candidates] of Object.entries(map)) {
+    const value = candidates.map((name) => source.getPropertyValue(name).trim()).find(Boolean);
+    if (value) root.style.setProperty(target, value);
+  }
+
+  const parentBody = window.parent.getComputedStyle(window.parent.document.body);
+  const font = source.getPropertyValue("--font-sans").trim() || parentBody.fontFamily;
+  if (font) root.style.setProperty("--font", font);
+}
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -121,7 +156,6 @@ function computeCosts(session, prices) {
   const raw = session.raw;
 
   const cacheRead = raw.cache_read_tokens || 0;
-  const cacheWrite = raw.cache_write_tokens || 0;
   const inputTok = raw.input_tokens;
   const outputTok = raw.output_tokens;
   const cachingOn = cacheRead > 0;
@@ -143,18 +177,13 @@ function computeCosts(session, prices) {
   }
 
   // Scale char-based estimates so pools match the session's reported totals.
-  const freshTarget = inputTok != null ? inputTok + cacheWrite : null;
+  const freshTarget = inputTok != null ? inputTok : null;
   const fCached = cachingOn && sumCachedEst > 0 ? cacheRead / sumCachedEst : 1;
   const fFresh = freshTarget != null && sumFreshEst > 0 ? freshTarget / sumFreshEst : 1;
   const fOut = outputTok != null && sumOutEst > 0 ? outputTok / sumOutEst : 1;
   // single "size" factor used when displaying a message's token count
-  const ctxTotal = (inputTok != null ? inputTok : sumFreshEst) + cacheRead + cacheWrite;
+  const ctxTotal = (inputTok != null ? inputTok : sumFreshEst) + cacheRead;
   const fSize = sumCachedEst + sumFreshEst > 0 ? ctxTotal / (sumCachedEst + sumFreshEst) : 1;
-
-  // Fresh tokens are a mix of regular input and cache writes -> blended rate.
-  const pFresh = freshTarget > 0
-    ? ((inputTok || 0) * prices.in + cacheWrite * prices.cacheWrite) / freshTarget
-    : prices.in;
 
   const perItem = items.map((it) => ({
     item: it, sentCount: 0,
@@ -174,7 +203,7 @@ function computeCosts(session, prices) {
       return { id, tok, cost };
     });
     const cachedParts = mk(c.cachedIds, fCached, prices.cacheRead, "cachedTok");
-    const freshParts = mk(c.freshIds, fFresh, pFresh, "freshTok");
+    const freshParts = mk(c.freshIds, fFresh, prices.in, "freshTok");
     const outTokScaled = items[c.asstId].outEst * fOut;
     const outCost = outTokScaled * prices.out;
     const agg = perItem[c.asstId];
@@ -231,7 +260,7 @@ function defaultPricesFor(modelId) {
   const p = state.openrouter?.get(modelId);
   if (!p) return null;
   const f = (v) => (v != null ? parseFloat(v) : 0);
-  return { in: f(p.prompt), out: f(p.completion), cacheRead: f(p.input_cache_read), cacheWrite: f(p.input_cache_write) };
+  return { in: f(p.prompt), out: f(p.completion), cacheRead: f(p.input_cache_read) };
 }
 
 function refreshPricesForActive(overwriteFromApi) {
@@ -241,7 +270,7 @@ function refreshPricesForActive(overwriteFromApi) {
   if (!state.prices[model] || overwriteFromApi) {
     const def = defaultPricesFor(model);
     if (def) state.prices[model] = def;
-    else if (!state.prices[model]) state.prices[model] = { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+    else if (!state.prices[model]) state.prices[model] = { in: 0, out: 0, cacheRead: 0 };
   }
   renderPricingInputs();
   renderAll();
@@ -250,7 +279,7 @@ function refreshPricesForActive(overwriteFromApi) {
 function activePrices() {
   const s = state.sessions[state.activeIdx];
   const model = s?.raw.model || "unknown";
-  return state.prices[model] || { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+  return state.prices[model] || { in: 0, out: 0, cacheRead: 0 };
 }
 
 function renderPricingInputs() {
@@ -263,7 +292,6 @@ function renderPricingInputs() {
   $("#price-input").value = perM(p.in);
   $("#price-output").value = perM(p.out);
   $("#price-cache-read").value = perM(p.cacheRead);
-  $("#price-cache-write").value = perM(p.cacheWrite);
 
   const pill = $("#pricing-status");
   if (state.openrouterStatus === "loading") { pill.textContent = "fetching OpenRouter prices…"; pill.className = "pill"; }
@@ -273,7 +301,7 @@ function renderPricingInputs() {
 }
 
 function bindPricingInputs() {
-  const map = { "price-input": "in", "price-output": "out", "price-cache-read": "cacheRead", "price-cache-write": "cacheWrite" };
+  const map = { "price-input": "in", "price-output": "out", "price-cache-read": "cacheRead" };
   for (const [id, key] of Object.entries(map)) {
     document.getElementById(id).addEventListener("input", (e) => {
       const s = state.sessions[state.activeIdx];
@@ -303,7 +331,6 @@ function normalizeHermesSession(raw, fallbackName) {
     input_tokens: raw.input_tokens ?? raw.prompt_tokens ?? meta.input_tokens ?? meta.prompt_tokens,
     output_tokens: raw.output_tokens ?? raw.completion_tokens ?? meta.output_tokens ?? meta.completion_tokens,
     cache_read_tokens: raw.cache_read_tokens ?? meta.cache_read_tokens ?? 0,
-    cache_write_tokens: raw.cache_write_tokens ?? meta.cache_write_tokens ?? 0,
     estimated_cost_usd: raw.estimated_cost_usd ?? raw.cost_usd ?? meta.estimated_cost_usd ?? meta.cost_usd,
   };
 }
@@ -813,6 +840,7 @@ function renderInsights(s, costs) {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("DOMContentLoaded", () => {
+  syncHermesTheme();
   tooltip.el = $("#tooltip");
   bindFileInputs();
   bindPricingInputs();
@@ -821,6 +849,7 @@ window.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#detail").hidden = true; });
   let rT;
   window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(renderAll, 150); });
+  window.setInterval(syncHermesTheme, 2000);
   fetchOpenRouterPricing();
   loadSessionFromQuery();
 });

@@ -1,16 +1,18 @@
 :root {
-  --bg: #0d1117;
-  --bg2: #161b22;
-  --bg3: #1f2630;
-  --border: #2d333b;
-  --fg: #e6edf3;
-  --muted: #8b949e;
-  --accent: #4493f8;
+  --bg: var(--color-background, #0d1117);
+  --bg2: var(--color-card, #161b22);
+  --bg3: var(--color-muted, #1f2630);
+  --border: var(--color-border, #2d333b);
+  --fg: var(--color-foreground, #e6edf3);
+  --muted: var(--color-muted-foreground, #8b949e);
+  --accent: var(--color-primary, #4493f8);
+  --accent-fg: var(--color-primary-foreground, #fff);
   --cached: #38bdf8;
   --fresh: #fbbf24;
   --output: #f472b6;
-  --green: #3fb950;
+  --green: var(--color-chart-2, #3fb950);
   --radius: 10px;
+  --font: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
 }
 
@@ -20,7 +22,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font);
   line-height: 1.45;
 }
 
@@ -58,7 +60,7 @@ h1 { margin: 0; font-size: 19px; font-weight: 650; }
   cursor: pointer;
   user-select: none;
 }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.1); }
 .btn.ghost { background: transparent; border: none; font-size: 16px; color: var(--muted); }
 .btn.ghost:hover { color: var(--fg); }
@@ -105,7 +107,7 @@ main { padding: 20px 28px 80px; max-width: 1400px; margin: 0 auto; }
   cursor: pointer;
   font-size: 13px;
 }
-.session-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.session-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 
 /* summary cards */
 .summary-grid {

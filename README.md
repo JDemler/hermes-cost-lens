@@ -61,7 +61,7 @@ public API.
 
 - **Summary cards** — total cost, API calls, and tokens split into **fresh input / cached input / output**,
   each with their dollar share.
-- **Pricing panel** — input / output / cache-read / cache-write rates fetched live from OpenRouter,
+- **Pricing panel** — input / output / cache-read rates fetched live from OpenRouter,
   matched on the session's `model` id. All fields are editable for what-if scenarios
   (e.g. "what would this session cost on a different model?").
 - **Cost flamegraph** — one column per API call, width proportional to cost.
@@ -81,7 +81,7 @@ tool calls, and its full cost accounting.
 ## How costs are computed
 
 Session JSONs report exact session-level totals (`input_tokens`, `output_tokens`,
-`cache_read_tokens`, `cache_write_tokens`) but no per-message usage. The tool therefore:
+`cache_read_tokens`) but no per-message usage. The tool therefore:
 
 1. **Estimates per-message tokens** from character counts (~4 chars/token), including tool-call
    names/arguments; assistant output additionally includes reasoning text.
@@ -91,7 +91,7 @@ Session JSONs report exact session-level totals (`input_tokens`, `output_tokens`
    cache reads, all context is treated as fresh.
 3. **Scales each pool** (cached / fresh / output) so estimates sum exactly to the session's
    reported totals — so the session total cost is exact, and the per-message split is a
-   well-calibrated estimate. Cache writes are folded into the fresh pool at a blended rate.
+   well-calibrated estimate.
 
 For known-good Hermes session exports, the computed total should match the session's own
 `estimated_cost_usd` to the cent.

@@ -105,24 +105,7 @@
 }
 
 .hcl-slot {
-  padding: 0.75rem;
-}
-
-.hcl-slot-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.625rem;
-}
-
-.hcl-slot-head strong {
-  font-size: 0.875rem;
-}
-
-.hcl-slot-head span {
-  color: var(--color-muted-foreground);
-  font-size: 0.75rem;
+  padding: 0.5rem;
 }
 
 .hcl-slot-links {

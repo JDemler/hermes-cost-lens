@@ -163,10 +163,6 @@
     if (!sessions.length) return null;
 
     return React.createElement("div", { className: "hcl-slot" },
-      React.createElement("div", { className: "hcl-slot-head" },
-        React.createElement("strong", null, "Cost Lens"),
-        React.createElement("span", null, "Direct analysis links for recent sessions"),
-      ),
       React.createElement("div", { className: "hcl-slot-links" },
         sessions.map((session) => {
           const id = session.id || session.session_id;
