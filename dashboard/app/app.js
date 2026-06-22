@@ -10,6 +10,7 @@
 const state = {
   sessions: [],        // { name, raw, analysis }
   activeIdx: -1,
+  flamegraphZoom: null,
   openrouter: null,    // model id -> pricing object
   openrouterStatus: "loading",
   fallbackPricing: null,
@@ -19,6 +20,7 @@ const state = {
 };
 
 const COLORS = { cached: "#38bdf8", fresh: "#fbbf24", output: "#f472b6" };
+let flamegraphZoomRuntime = null;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -80,6 +82,36 @@ function fmtTok(v) {
 
 function fmtPct(v) {
   return (v * 100).toFixed(v >= 0.1 ? 1 : 2) + "%";
+}
+
+function fmtDuration(seconds) {
+  if (seconds == null || !isFinite(seconds)) return "—";
+  const sign = seconds < 0 ? "-" : "";
+  const abs = Math.abs(seconds);
+  if (abs < 0.001) return sign + "<1ms";
+  if (abs < 1) return sign + (abs * 1000).toFixed(abs < 0.01 ? 1 : 0) + "ms";
+  if (abs < 60) return sign + abs.toFixed(abs < 10 ? 2 : 1) + "s";
+  if (abs < 3600) {
+    const m = Math.floor(abs / 60);
+    const s = Math.round(abs % 60);
+    return `${sign}${m}m ${s}s`;
+  }
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  return `${sign}${h}h ${m}m`;
+}
+
+function parseTimeSeconds(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (!trimmed) return null;
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return parseTimeSeconds(Number(trimmed));
+    const parsed = Date.parse(trimmed);
+    return isNaN(parsed) ? null : parsed / 1000;
+  }
+  if (typeof v !== "number" || !isFinite(v)) return null;
+  return Math.abs(v) > 1e11 ? v / 1000 : v;
 }
 
 function esc(s) {
@@ -416,6 +448,7 @@ function addSession(name, raw) {
   const session = { name, raw: normalized, analysis: analyzeSession(normalized) };
   state.sessions.push(session);
   state.activeIdx = state.sessions.length - 1;
+  state.flamegraphZoom = null;
   $("#app").hidden = false;
   $("#clear-sessions").hidden = false;
   $("#dropzone").classList.add("compact");
@@ -493,6 +526,8 @@ function bindFileInputs() {
   $("#clear-sessions").addEventListener("click", () => {
     state.sessions = [];
     state.activeIdx = -1;
+    state.flamegraphZoom = null;
+    flamegraphZoomRuntime = null;
     $("#app").hidden = true;
     $("#clear-sessions").hidden = true;
     $("#detail").hidden = true;
@@ -519,7 +554,12 @@ function renderTabs() {
     const b = document.createElement("button");
     b.textContent = s.raw.title || s.name;
     b.className = i === state.activeIdx ? "active" : "";
-    b.onclick = () => { state.activeIdx = i; renderTabs(); refreshPricesForActive(false); };
+    b.onclick = () => {
+      state.activeIdx = i;
+      state.flamegraphZoom = null;
+      renderTabs();
+      refreshPricesForActive(false);
+    };
     nav.appendChild(b);
   });
   nav.style.display = state.sessions.length > 1 ? "flex" : "none";
@@ -565,7 +605,7 @@ function showItemDetail(agg, totals) {
     ["Output tokens", fmtTok(agg.outTok)],
     ["Context cost", fmtMoney(agg.contextCost)],
     ["Output cost", fmtMoney(agg.outputCost)],
-    ["Total cost", fmtMoney(agg.totalCost) + ` (${fmtPct(agg.totalCost / totals.cost)} of session)`],
+    ["Total cost", fmtMoney(agg.totalCost) + (totals.cost > 0 ? ` (${fmtPct(agg.totalCost / totals.cost)} of session)` : "")],
   ];
   let body = `<div class="kv">${kv.map(([k, v]) => `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`).join("")}</div>`;
   const cut = (s, n = 12000) => (s.length > n ? s.slice(0, n) + `\n… [${(s.length - n).toLocaleString()} more chars]` : s);
@@ -597,7 +637,9 @@ function renderAll() {
 
 function renderSummary(s, { totals, calls }) {
   const raw = s.raw;
-  const dur = raw.started_at && raw.ended_at ? `${Math.round(raw.ended_at - raw.started_at)}s` : null;
+  const started = parseTimeSeconds(raw.started_at);
+  const ended = parseTimeSeconds(raw.ended_at);
+  const dur = started != null && ended != null ? fmtDuration(ended - started) : null;
   const noCacheCost = totals.cachedTok * (activePrices().in - activePrices().cacheRead);
   const cards = [
     ["Total cost", fmtMoney(totals.cost), raw.estimated_cost_usd != null ? `session reports ${fmtMoney(raw.estimated_cost_usd)}` : "", "money"],
@@ -614,49 +656,141 @@ function renderSummary(s, { totals, calls }) {
 
 // --- Flamegraph (3-row icicle: calls / pools / messages) -------------------
 
+function costCallSpans(costs) {
+  let x = 0;
+  return {
+    domain: [0, costs.totals.cost],
+    spans: costs.calls.map((call) => {
+      const span = { call, x0: x, x1: x + call.totalCost };
+      x += call.totalCost;
+      return span;
+    }),
+  };
+}
+
+function resetFlamegraphZoom() {
+  state.flamegraphZoom = null;
+  if (flamegraphZoomRuntime?.svgNode && flamegraphZoomRuntime?.zoom) {
+    d3.select(flamegraphZoomRuntime.svgNode)
+      .call(flamegraphZoomRuntime.zoom.transform, d3.zoomIdentity);
+  } else {
+    renderAll();
+  }
+}
+
+function zoomFlamegraphBy(factor) {
+  if (!flamegraphZoomRuntime?.svgNode || !flamegraphZoomRuntime?.zoom) return;
+  d3.select(flamegraphZoomRuntime.svgNode)
+    .call(
+      flamegraphZoomRuntime.zoom.scaleBy,
+      factor,
+      [flamegraphZoomRuntime.W / 2, flamegraphZoomRuntime.H / 2],
+    );
+}
+
+function bindFlamegraphControls() {
+  $("#flamegraph-zoom-in").addEventListener("click", () => zoomFlamegraphBy(1.6));
+  $("#flamegraph-zoom-out").addEventListener("click", () => zoomFlamegraphBy(1 / 1.6));
+  $("#flamegraph-zoom-reset").addEventListener("click", resetFlamegraphZoom);
+}
+
 function renderFlamegraph(s, costs) {
   const container = $("#flamegraph");
   container.innerHTML = "";
+  flamegraphZoomRuntime = null;
   const W = container.clientWidth || 1000;
-  const rowH = 44, gap = 2, labelH = 16;
-  const H = rowH * 3 + gap * 2 + labelH;
-  const svg = d3.create("svg").attr("viewBox", `0 0 ${W} ${H}`).attr("height", H);
+  const rowH = 44, gap = 2, labelH = 16, axisH = 26;
+  const H = rowH * 3 + gap * 2 + labelH + axisH;
+  const svg = d3.create("svg")
+    .attr("viewBox", `0 0 ${W} ${H}`)
+    .attr("height", H)
+    .attr("role", "img");
 
   const total = costs.totals.cost;
   if (!(total > 0)) {
     container.innerHTML = `<p class="hint">Total cost is $0 — set prices above to see the breakdown.</p>`;
     return;
   }
-  const x = d3.scaleLinear([0, total], [0, W]);
+  const layout = costCallSpans(costs);
+  if (!layout || !(layout.domain[1] > layout.domain[0])) {
+    container.innerHTML = `<p class="hint">Nothing to show yet.</p>`;
+    return;
+  }
+  const baseX = d3.scaleLinear(layout.domain, [0, W]);
+  const transform = state.flamegraphZoom || d3.zoomIdentity;
+  let x = transform.rescaleX(baseX);
   const items = s.analysis.items;
   const perItem = costs.perItem;
+  const plotH = H - axisH;
+  const clipId = "flamegraph-clip";
+  const blocks = [];
+
+  svg.append("defs").append("clipPath")
+    .attr("id", clipId)
+    .append("rect")
+    .attr("x", 0).attr("y", 0).attr("width", W).attr("height", plotH);
+  const plot = svg.append("g").attr("clip-path", `url(#${clipId})`);
 
   const shade = (base, i) => {
     const c = d3.color(base);
     return (i % 2 ? c.darker(0.55) : c).toString();
   };
 
+  const splitSpan = (x0, x1, entries, metric) => {
+    const totalMetric = d3.sum(entries, metric);
+    let cursor = x0;
+    if (!(totalMetric > 0)) return [];
+    return entries.map((entry) => {
+      const w = (x1 - x0) * (metric(entry) / totalMetric);
+      const span = { entry, x0: cursor, x1: cursor + w };
+      cursor += w;
+      return span;
+    });
+  };
+
+  const positionBlock = (block) => {
+    const px0 = x(block.x0);
+    const px1 = x(block.x1);
+    const w = Math.max(px1 - px0 - 0.5, 0.5);
+    block.rect
+      .attr("x", px0)
+      .attr("width", w);
+    if (!block.text) return;
+    if (w <= 46) {
+      block.text.attr("display", "none");
+      return;
+    }
+    block.text
+      .attr("display", null)
+      .attr("x", px0 + w / 2)
+      .text(block.label.length * 6.6 > w
+        ? block.label.slice(0, Math.floor(w / 6.6) - 1) + "…"
+        : block.label);
+  };
+
   const addRect = (x0, x1, y, h, fill, ttHtml, onClick, label, labelFill = "#0d1117") => {
-    const w = Math.max(x(x1) - x(x0) - 0.5, 0.5);
-    const r = svg.append("rect")
-      .attr("x", x(x0)).attr("y", y).attr("width", w).attr("height", h)
+    const r = plot.append("rect")
+      .attr("y", y).attr("height", h)
       .attr("fill", fill).attr("rx", 2);
     r.on("mousemove", (ev) => tooltip.show(ttHtml, ev))
       .on("mouseleave", () => tooltip.hide());
     if (onClick) r.on("click", onClick);
-    if (label && w > 46) {
-      svg.append("text")
-        .attr("x", x(x0) + w / 2).attr("y", y + h / 2 + 4)
+    let text = null;
+    if (label) {
+      text = plot.append("text")
+        .attr("y", y + h / 2 + 4)
         .attr("text-anchor", "middle").attr("fill", labelFill)
-        .attr("font-size", 11).attr("font-weight", 600)
-        .text(label.length * 6.6 > w ? label.slice(0, Math.floor(w / 6.6) - 1) + "…" : label);
+        .attr("font-size", 11).attr("font-weight", 600);
     }
+    const block = { x0, x1, rect: r, text, label };
+    blocks.push(block);
+    positionBlock(block);
     return r;
   };
 
-  let cx = 0;
-  for (const call of costs.calls) {
-    const c0 = cx, c1 = cx + call.totalCost;
+  for (const span of layout.spans) {
+    const { call } = span;
+    const c0 = span.x0, c1 = span.x1;
     const asst = items[call.asstId];
 
     // Row 1: the API call
@@ -669,55 +803,81 @@ function renderFlamegraph(s, costs) {
         ["result", asst.label],
       ]),
       () => showItemDetail(perItem[call.asstId], costs.totals),
-      `#${call.n} ${fmtMoney(call.totalCost)}`, "#e6edf3");
+      `#${call.n} ${fmtMoney(call.totalCost)}`,
+      "#e6edf3");
 
     // Row 2: pools + Row 3: per-message blocks
-    let px = c0;
     const pools = [
-      ["cached input", call.cachedCost, COLORS.cached, call.cachedParts, call.cachedTok],
-      ["fresh input", call.freshCost, COLORS.fresh, call.freshParts, call.freshTok],
-      ["output", call.outCost, COLORS.output, null, call.outTok],
-    ];
-    for (const [name, cost, color, parts, tok] of pools) {
-      if (!(cost > 0)) continue;
-      addRect(px, px + cost, labelH + rowH + gap, rowH, color,
+      { name: "cached input", cost: call.cachedCost, color: COLORS.cached, parts: call.cachedParts, tok: call.cachedTok },
+      { name: "fresh input", cost: call.freshCost, color: COLORS.fresh, parts: call.freshParts, tok: call.freshTok },
+      { name: "output", cost: call.outCost, color: COLORS.output, parts: null, tok: call.outTok },
+    ].filter((pool) => pool.cost > 0);
+    for (const poolSpan of splitSpan(c0, c1, pools, (pool) => pool.cost)) {
+      const { name, cost, color, parts, tok } = poolSpan.entry;
+      addRect(poolSpan.x0, poolSpan.x1, labelH + rowH + gap, rowH, color,
         `<div class="t">Call #${call.n} — ${name}</div>` + ttRows([
           ["tokens", fmtTok(tok)], ["cost", fmtMoney(cost)],
-          ["share of call", fmtPct(cost / call.totalCost)],
+          ["share of call cost", call.totalCost > 0 ? fmtPct(cost / call.totalCost) : "—"],
         ]),
         null, `${name} ${fmtMoney(cost)}`);
 
       const y3 = labelH + (rowH + gap) * 2;
       if (parts) {
-        let mx = px;
-        parts.forEach((p, i) => {
-          if (!(p.cost > 0)) return;
-          const it = items[p.id];
-          addRect(mx, mx + p.cost, y3, rowH, shade(color, i),
-            `<div class="t">#${it.id} ${esc(it.label)}</div>` + ttRows([
-              ["tokens here", fmtTok(p.tok)], ["cost here", fmtMoney(p.cost)],
-              ["pool", name],
-              ["total over session", fmtMoney(perItem[p.id].totalCost)],
-            ]),
-            () => showItemDetail(perItem[p.id], costs.totals),
-            it.toolName || it.role);
-          mx += p.cost;
-        });
+        const partEntries = parts.filter((p) => p.cost > 0);
+        splitSpan(poolSpan.x0, poolSpan.x1, partEntries, (p) => p.cost)
+          .forEach(({ entry: p, x0, x1 }, i) => {
+            const it = items[p.id];
+            addRect(x0, x1, y3, rowH, shade(color, i),
+              `<div class="t">#${it.id} ${esc(it.label)}</div>` + ttRows([
+                ["tokens here", fmtTok(p.tok)], ["cost here", fmtMoney(p.cost)],
+                ["pool", name],
+                ["total over session", fmtMoney(perItem[p.id].totalCost)],
+              ]),
+              () => showItemDetail(perItem[p.id], costs.totals),
+              it.toolName || it.role);
+          });
       } else {
-        addRect(px, px + cost, y3, rowH, shade(color, 0),
+        addRect(poolSpan.x0, poolSpan.x1, y3, rowH, shade(color, 0),
           `<div class="t">#${asst.id} ${esc(asst.label)} (generation)</div>` + ttRows([
             ["output tokens", fmtTok(tok)], ["cost", fmtMoney(cost)],
           ]),
           () => showItemDetail(perItem[call.asstId], costs.totals),
           "gen");
       }
-      px += cost;
     }
-    cx = c1;
   }
 
-  svg.append("text").attr("x", 0).attr("y", 11).attr("fill", "#8b949e").attr("font-size", 11)
-    .text(`session total ${fmtMoney(total)} → ${W}px`);
+  const axis = d3.axisBottom(x)
+    .ticks(Math.max(2, Math.floor(W / 130)))
+    .tickSizeOuter(0)
+    .tickFormat(fmtMoney);
+  const axisG = svg.append("g")
+    .attr("class", "flamegraph-axis")
+    .attr("transform", `translate(0,${plotH + 5})`);
+
+  const scaleLabel = svg.append("text")
+    .attr("x", 0).attr("y", 11).attr("fill", "#8b949e").attr("font-size", 11);
+
+  const updateZoom = (nextTransform) => {
+    state.flamegraphZoom = nextTransform;
+    x = nextTransform.rescaleX(baseX);
+    blocks.forEach(positionBlock);
+    axisG.call(axis.scale(x));
+    scaleLabel.text(`session total ${fmtMoney(total)} · zoom ${nextTransform.k.toFixed(1)}×`);
+  };
+
+  updateZoom(transform);
+
+  const zoom = d3.zoom()
+    .scaleExtent([1, 300])
+    .translateExtent([[0, 0], [W, H]])
+    .extent([[0, 0], [W, H]])
+    .on("zoom", (ev) => {
+      tooltip.hide();
+      updateZoom(ev.transform);
+    });
+  svg.property("__zoom", transform).call(zoom);
+  flamegraphZoomRuntime = { svgNode: svg.node(), zoom, W, H };
 
   container.appendChild(svg.node());
 }
@@ -920,6 +1080,7 @@ window.addEventListener("DOMContentLoaded", () => {
   tooltip.el = $("#tooltip");
   bindFileInputs();
   bindPricingInputs();
+  bindFlamegraphControls();
   bindTableSort();
   $("#detail-close").onclick = () => { $("#detail").hidden = true; };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#detail").hidden = true; });

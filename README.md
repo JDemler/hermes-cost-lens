@@ -70,6 +70,7 @@ providerless aliases such as `gpt-5.5`.
   - Row 1: the API call
   - Row 2: cached input vs fresh input vs output cost within that call
   - Row 3: the individual messages making up each pool
+  - Zoom and pan controls for inspecting dense call clusters
 - **Cumulative cost attribution treemap** — every message's *total* cost over the whole session
   (its tokens × every call it was re-sent in, at the applicable cached/fresh rate, plus its
   generation cost), grouped by System prompt / User / Tool / Assistant. Big tiles = optimization targets.

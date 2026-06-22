@@ -60,13 +60,20 @@
   <section class="panel">
     <div class="panel-head">
       <h2>Cost flamegraph <span class="muted">— one column per API call, width ∝ cost</span></h2>
-      <div class="legend">
-        <span><i class="sw cached"></i>cached input</span>
-        <span><i class="sw fresh"></i>fresh input</span>
-        <span><i class="sw output"></i>output</span>
+      <div class="chart-tools">
+        <div class="zoom-tools" aria-label="Flamegraph zoom">
+          <button type="button" id="flamegraph-zoom-out" title="Zoom out">−</button>
+          <button type="button" id="flamegraph-zoom-in" title="Zoom in">+</button>
+          <button type="button" id="flamegraph-zoom-reset">Reset</button>
+        </div>
       </div>
     </div>
-    <p class="hint">Every API call re-sends the whole conversation. Row 1 = API calls, row 2 = cached / fresh / output split, row 3 = the individual messages inside each pool. Click any block for details.</p>
+    <div class="legend">
+      <span><i class="sw cached"></i>cached input</span>
+      <span><i class="sw fresh"></i>fresh input</span>
+      <span><i class="sw output"></i>output</span>
+    </div>
+    <p class="hint">Every API call re-sends the whole conversation. Row 1 = API calls, row 2 = cached / fresh / output split, row 3 = the individual messages inside each pool. Click any block for details. Use the mouse wheel or trackpad to zoom, then drag to pan.</p>
     <div id="flamegraph" class="chart"></div>
   </section>
 

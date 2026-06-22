@@ -181,11 +181,46 @@ main { padding: 20px 28px 80px; max-width: 1400px; margin: 0 auto; }
 .sw.fresh { background: var(--fresh); }
 .sw.output { background: var(--output); }
 
+.chart-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.zoom-tools {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.zoom-tools button {
+  min-width: 34px;
+  min-height: 30px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.zoom-tools button { padding: 0 10px; font-family: ui-monospace, monospace; }
+.zoom-tools button:last-child { border-right: 0; }
+.zoom-tools button:hover {
+  background: var(--bg3);
+  color: var(--fg);
+}
+
 .chart { width: 100%; }
 .chart svg { display: block; width: 100%; }
 .chart rect { cursor: pointer; transition: opacity .1s; }
 .chart rect:hover { opacity: .85; stroke: #fff; stroke-width: 1px; }
 .chart text { pointer-events: none; font-family: ui-monospace, "SF Mono", monospace; }
+.flamegraph-axis path,
+.flamegraph-axis line { stroke: var(--border); }
+.flamegraph-axis text { fill: var(--muted); font-size: 10.5px; }
 
 /* table */
 .table-wrap { overflow-x: auto; margin-top: 8px; }
